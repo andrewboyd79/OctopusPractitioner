@@ -26,10 +26,6 @@
           
       - name: push packages to Octopus
         uses: OctopusDeploy/push-package-action@v3
-        env:
-          OCTOPUS_URL: ${{ secrets.OCTOPUSSERVERURL }}
-          OCTOPUS_API_KEY: ${{ secrets.OCTOPUSSERVERAPIKEY }}
-          OCTOPUS_SPACE: ${{ secrets.OCTOPUS_SPACE }}
         with:
           packages: |
             packaged/**/*.zip
@@ -45,7 +41,6 @@
       - name: create release
         uses: OctopusDeploy/create-release-action@v3
         with:
-          space: ${{ env.OCTOPUS_SPACE }}
           project: ${{ env.OCTOPUS_PROJECT_NAME }}
           channel: ${{ steps.ReleaseNum.outputs.OCTOPUS_CHANNEL }}
           release_number: ${{ steps.ReleaseNum.outputs.APP_VERSION }}
@@ -55,7 +50,6 @@
         uses: OctopusDeploy/deploy-release-action@v3
         id: "deploy_release"
         with:
-          space: ${{ env.OCTOPUS_SPACE }}
           project: ${{ env.OCTOPUS_PROJECT_NAME }}
           release_number: ${{ steps.ReleaseNum.outputs.APP_VERSION }}
           environments: ${{ steps.ReleaseNum.outputs.OCTOPUS_ENVIRONMENT }}
@@ -65,7 +59,6 @@
         uses: OctopusDeploy/deploy-release-action@v3
         id: "deploy_release"
         with:
-          space: ${{ env.OCTOPUS_SPACE }}
           project: ${{ env.OCTOPUS_PROJECT_NAME }}
           release_number: ${{ steps.ReleaseNum.outputs.APP_VERSION }}
           environments: ${{ steps.ReleaseNum.outputs.OCTOPUS_ENVIRONMENT }}

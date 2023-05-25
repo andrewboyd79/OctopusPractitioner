@@ -1,4 +1,4 @@
-      - name: package website
+     - name: package website
         id: "website_package"
         uses: OctopusDeploy/create-zip-package-action@v3
         with:
@@ -44,6 +44,15 @@
           project: ${{ env.OCTOPUS_PROJECT_NAME }}
           channel: ${{ steps.ReleaseNum.outputs.OCTOPUS_CHANNEL }}
           release_number: ${{ steps.ReleaseNum.outputs.APP_VERSION }}
+          package_version: ${{ steps.ReleaseNum.outputs.APP_VERSION }}
+      
+      - name: deploy release
+        uses: OctopusDeploy/deploy-release-action@v3
+        id: "deploy_release"
+        with:
+          project: ${{ env.OCTOPUS_PROJECT_NAME }}
+          release_number: ${{ steps.ReleaseNum.outputs.APP_VERSION }}
+          environments: ${{ steps.ReleaseNum.outputs.OCTOPUS_ENVIRONMENT }}
           package_version: ${{ steps.ReleaseNum.outputs.APP_VERSION }}
       
       - name: deploy release

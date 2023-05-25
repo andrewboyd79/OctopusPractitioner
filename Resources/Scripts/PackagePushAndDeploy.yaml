@@ -26,6 +26,10 @@
           
       - name: push packages to Octopus
         uses: OctopusDeploy/push-package-action@v3
+        env:
+          OCTOPUS_URL: ${{ secrets.OCTOPUSSERVERURL }}
+          OCTOPUS_API_KEY: ${{ secrets.OCTOPUSSERVERAPIKEY }}
+          OCTOPUS_SPACE: ${{ secrets.OCTOPUS_SPACE }}
         with:
           packages: |
             packaged/**/*.zip

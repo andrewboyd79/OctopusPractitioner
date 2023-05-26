@@ -1,4 +1,9 @@
 default_guided_failure_mode = "On"
+release_notes_template = <<-EOT
+        **AUTOMATED RELEASE**
+        
+        Release created using branch detailed
+        EOT
 
 connectivity_policy {
     allow_deployments_to_no_targets = true

@@ -1,0 +1,233 @@
+step "calculate-deployment-mode" {
+    name = "Calculate Deployment Mode"
+
+    action {
+        notes = "**This step determines if this is a rollback, redeployment or deployment** "
+        properties = {
+            Octopus.Action.RunOnServer = "true"
+            Octopus.Action.Template.Id = "ActionTemplates-86"
+            Octopus.Action.Template.Version = "5"
+        }
+        worker_pool_variable = ""
+    }
+}
+
+step "create-database-through-runbook" {
+    condition = "Variable"
+    name = "Create database through runbook"
+    properties = {
+        Octopus.Step.ConditionVariableExpression = "#{unless Octopus.Deployment.Error}#{Octopus.Action[Calculate Deployment Mode].Output.RunOnDeploy}#{/unless}"
+    }
+
+    action {
+        notes = <<-EOT
+                **This step uses a runbook to create the database required by this deployment process**
+                This step will only run on deployments - not on redeployments/roll backs
+                EOT
+        properties = {
+            Octopus.Action.RunOnServer = "true"
+            Octopus.Action.Template.Id = "ActionTemplates-85"
+            Octopus.Action.Template.Version = "14"
+            Run.Runbook.Api.Key = "#{Project.Runbook.Api.Key}"
+            Run.Runbook.AutoApproveManualInterventions = "No"
+            Run.Runbook.Base.Url = "#{Octopus.Web.ServerUri}"
+            Run.Runbook.CancelInSeconds = "1800"
+            Run.Runbook.DateTime = "N/A"
+            Run.Runbook.Environment.Name = "#{Octopus.Environment.Name}"
+            Run.Runbook.Machines = "N/A"
+            Run.Runbook.ManualIntervention.EnvironmentToUse = "#{Octopus.Environment.Name}"
+            Run.Runbook.Name = "Configure SQL Server"
+            Run.Runbook.Project.Name = "Trident"
+            Run.Runbook.Space.Name = "#{Octopus.Space.Name}"
+            Run.Runbook.UsePublishedSnapShot = "True"
+            Run.Runbook.Waitforfinish = "True"
+        }
+        worker_pool = "hosted-windows"
+    }
+}
+
+step "generate-what-if-report" {
+    condition = "Variable"
+    name = "Generate What If Report"
+    properties = {
+        Octopus.Step.ConditionVariableExpression = "#{unless Octopus.Deployment.Error}#{Octopus.Action[Calculate Deployment Mode].Output.RunOnDeploy}#{/unless}"
+    }
+
+    action {
+        notes = <<-EOT
+                **This step generates an artifact/report on the changes that are to be made to the database**
+                This step will only run on deployments - not on redeployments/roll backs
+                EOT
+        properties = {
+            Database.Deploy.ConnectionString = "#{Project.Connection.String}"
+            Database.Deploy.Package = "{\"PackageId\":\"Trident.Database\",\"FeedId\":\"octopus-server-built-in\"}"
+            Database.Deploy.PathToDBUpExe = ".\\Octopus.Trident.Database.DbUp"
+            Database.Deploy.ReportPath = "#{Project.Database.Report.Path}"
+            Database.Deploy.WhatIf = "True"
+            Octopus.Action.RunOnServer = "true"
+            Octopus.Action.Template.Id = "ActionTemplates-84"
+            Octopus.Action.Template.Version = "1"
+        }
+        worker_pool = "hosted-windows"
+
+        packages "Database.Deploy.Package" {
+            acquisition_location = "Server"
+            feed = "octopus-server-built-in"
+            package_id = "Trident.Database"
+            properties = {
+                Extract = "True"
+                PackageParameterName = "Database.Deploy.Package"
+                Purpose = ""
+                SelectionMode = "deferred"
+            }
+        }
+    }
+}
+
+step "review-database-changes" {
+    condition = "Variable"
+    name = "Review Database Changes"
+    properties = {
+        Octopus.Step.ConditionVariableExpression = "#{unless Octopus.Deployment.Error}#{Octopus.Action[Calculate Deployment Mode].Output.RunOnDeploy}#{/unless}"
+    }
+
+    action {
+        action_type = "Octopus.Manual"
+        environments = ["staging"]
+        notes = <<-EOT
+                **This is a manual intervention step to allow someone to review database changes**
+                **Changes must be approved by an Octopus Manager!!**
+                
+                This step will only run on deployments - not on redeployments/roll backs
+                EOT
+        properties = {
+            Octopus.Action.Manual.BlockConcurrentDeployments = "False"
+            Octopus.Action.Manual.Instructions = "Please review the database changes from the artifact attached to this deployment"
+            Octopus.Action.Manual.ResponsibleTeamIds = "global/octopus-managers"
+        }
+    }
+}
+
+step "deploy-database-changes" {
+    condition = "Variable"
+    name = "Deploy Database Changes"
+    properties = {
+        Octopus.Step.ConditionVariableExpression = "#{unless Octopus.Deployment.Error}#{Octopus.Action[Calculate Deployment Mode].Output.RunOnDeploy}#{/unless}"
+    }
+
+    action {
+        notes = <<-EOT
+                **This steps deploy the database changes that have been reviewed and approved in previous steps**
+                
+                This step will only run on deployments - not on redeployments/roll backs
+                EOT
+        properties = {
+            Database.Deploy.ConnectionString = "#{Project.Connection.String}"
+            Database.Deploy.Package = "{\"PackageId\":\"Trident.Database\",\"FeedId\":\"octopus-server-built-in\"}"
+            Database.Deploy.PathToDBUpExe = ".\\Octopus.Trident.Database.DbUp"
+            Database.Deploy.ReportPath = "#{Project.Database.Report.Path}"
+            Database.Deploy.WhatIf = "False"
+            Octopus.Action.RunOnServer = "true"
+            Octopus.Action.Template.Id = "ActionTemplates-84"
+            Octopus.Action.Template.Version = "1"
+        }
+        worker_pool = "hosted-windows"
+
+        packages "Database.Deploy.Package" {
+            acquisition_location = "Server"
+            feed = "octopus-server-built-in"
+            package_id = "Trident.Database"
+            properties = {
+                Extract = "True"
+                PackageParameterName = "Database.Deploy.Package"
+                Purpose = ""
+                SelectionMode = "deferred"
+            }
+        }
+    }
+}
+
+step "deploy-trident-web-application" {
+    name = "Deploy Trident Web Application"
+    properties = {
+        Octopus.Action.TargetRoles = "trident-web"
+    }
+
+    action {
+        action_type = "Octopus.TentaclePackage"
+        notes = "**This step deploys the Trident Web application package**"
+        properties = {
+            Octopus.Action.EnabledFeatures = "Octopus.Features.JsonConfigurationVariables"
+            Octopus.Action.Package.DownloadOnTentacle = "False"
+            Octopus.Action.Package.FeedId = "octopus-server-built-in"
+            Octopus.Action.Package.JsonConfigurationVariablesTargets = "appSettings.json"
+            Octopus.Action.Package.PackageId = "Trident.Web"
+        }
+        worker_pool_variable = ""
+
+        packages {
+            acquisition_location = "Server"
+            feed = "octopus-server-built-in"
+            package_id = "Trident.Web"
+            properties = {
+                SelectionMode = "immediate"
+            }
+        }
+    }
+}
+
+step "verify-application" {
+    name = "Verify Application"
+
+    action {
+        action_type = "Octopus.Script"
+        notes = "**This step verifies the presence of the application - runs on worker only**"
+        properties = {
+            Octopus.Action.RunOnServer = "true"
+            Octopus.Action.Script.ScriptBody = "write-host \"This application has been successfully verified\""
+            Octopus.Action.Script.ScriptSource = "Inline"
+            Octopus.Action.Script.Syntax = "PowerShell"
+        }
+        worker_pool = "hosted-windows"
+    }
+}
+
+step "update-load-balancer" {
+    name = "Update Load Balancer"
+
+    action {
+        action_type = "Octopus.Script"
+        notes = "This step mimics the actions associated with updating a Load Balancer"
+        properties = {
+            Octopus.Action.RunOnServer = "true"
+            Octopus.Action.Script.ScriptBody = <<-EOT
+                $releaseNumber = $OctopusParameters["Octopus.Release.Number"]
+                Write-Highlight "Updated the Load Balancer to point to version $releaseNumber of the application"
+                EOT
+            Octopus.Action.Script.ScriptSource = "Inline"
+            Octopus.Action.Script.Syntax = "PowerShell"
+        }
+        worker_pool = "hosted-windows"
+    }
+}
+
+step "slack-notification-of-deployment-to-staging-production" {
+    condition = "Always"
+    name = "Slack Notification of deployment to Staging & Production"
+
+    action {
+        environments = ["staging", "production"]
+        notes = "**Sends notification to the configured Slack channel following every deployment in Staging & Production environments**"
+        properties = {
+            Octopus.Action.RunOnServer = "true"
+            Octopus.Action.Template.Id = "ActionTemplates-82"
+            Octopus.Action.Template.Version = "15"
+            ssn_HookUrl = "#{Notification.Slack.Webhook.Url}"
+            ssn_IconUrl = "https://octopus.com/content/resources/favicon.png"
+            ssn_Message = "#{Notification.Body.Text}"
+            ssn_Title = "#{Notification.Subject.Text}"
+            ssn_Username = "Octopus Deploy"
+        }
+        worker_pool = "hosted-windows"
+    }
+}
